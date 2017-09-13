@@ -4,7 +4,7 @@ Created on Thu Apr 24 13:33:02 2014
 
 @author: Hussam Hamdan
 
-Modified version by Gaël Guibon (command line interface added and speed boost for testing phase)
+Modified version by Gaël Guibon (command line interface added)
 """
 #ignore scikit warnings
 def warn(*args, **kwargs):
@@ -42,10 +42,24 @@ args = parser.parse_args()
 
 class Echo():
 
-    def __init__(self):
-        print "Model Loading ..."
-        self.vocabhash = self.loadVocbFile("./data/reviewvocab.txt")
-        self.classifier1 = joblib.load("./review.pkl")
+    # def __init__(self):
+    #     print "Model Loading ..."
+    #     self.vocabhash = self.loadVocbFile("./data/reviewvocab.txt")
+    #     self.classifier1 = joblib.load("./review.pkl")
+    #     self.rep = {"\t": " ", "\r": "", "\n": "", "\\u002c": ",", "\\u2019": "'", "\\u2013": "-" ,  "\\u2013": "-"}
+    #     self.rep = dict((re.escape(k), v) for k, v in self.rep.iteritems())
+    #     self.pattern = re.compile("|".join(self.rep.keys()))
+
+    def __init__(self, training=False, vocab_path='./data/reviewvocab.txt', model_path='./model/review.pkl'):
+        if training:
+            print "echo start whithout model loaded"
+        else:
+            print "Model Loading ..."
+            self.vocabhash = self.loadVocbFile(vocab_path)
+            self.classifier1 = joblib.load(model_path)
+            self.rep = {"\t": " ", "\r": "", "\n": "", "\\u002c": ",", "\\u2019": "'", "\\u2013": "-" ,  "\\u2013": "-"}
+            self.rep = dict((re.escape(k), v) for k, v in self.rep.iteritems())
+            self.pattern = re.compile("|".join(self.rep.keys()))
 
     # added by GG to show the progress
     def progressBar( self, value, endvalue, bar_length=100):
@@ -89,26 +103,36 @@ class Echo():
         return dicth
 
     def getpolarityid(self, polarity):
-        if polarity == "negative":
-            return 0
-        elif polarity == "neutral":
-            return 1
-        elif polarity == "positive":
-            return 2
+        map_polarities = {"0":"negative", "1":"neutral", "2":"positive"}
+        return map_polarities[str(int(polarity))]
+        # if polarity == "negative":
+        #     return 0
+        # elif polarity == "neutral":
+        #     return 1
+        # elif polarity == "positive":
+        #     return 2
 
     def getPolaritynam(self, polarity):
-        if polarity == 0:
-            return "negative"
-        elif polarity == 1:
-            return "neutral"
-        elif polarity == 2:
-            return "positive"
+        map_polarities = {"0":"negative", "1":"neutral", "2":"positive"}
+        return map_polarities[str(int(polarity))]
+        # if polarity == 1:
+        #     return "neutral"
+        # elif polarity == 0:
+        #     return "negative"
+        # elif polarity == 2:
+        #     return "positive"
 
-    def splitfun4tweet(self, doc):
+    def splitfun4tweetGG(self, doc):
         doc = doc.decode('utf8', errors='ignore').encode('ascii', errors='ignore')
-        doc = doc.replace("\t", " ").replace("\r", "").replace("\n", "").lower()
-        doc = doc.replace("\\u002c", ",").replace("\\u2019", "'")
-        doc = doc.replace("\\u2013", "-").replace("\\u2013", "-")
+
+        # rep = {"\t": " ", "\r": "", "\n": "", "\\u002c": ",", "\\u2019": "'", "\\u2013": "-" ,  "\\u2013": "-"}
+        # rep = dict((re.escape(k), v) for k, v in rep.iteritems())
+        # pattern = re.compile("|".join(rep.keys()))
+        doc = self.pattern.sub(lambda m: self.rep[re.escape(m.group(0))], doc.lower())
+
+        # doc = doc.replace("\t", " ").replace("\r", "").replace("\n", "").lower()
+        # doc = doc.replace("\\u002c", ",").replace("\\u2019", "'")
+        # doc = doc.replace("\\u2013", "-").replace("\\u2013", "-")
         y = re.findall(r'@[a-z0-9]+', doc)
         for y1 in y:
             doc = doc.replace(y1, "uuser")
@@ -116,22 +140,27 @@ class Echo():
         for y1 in y:
             doc = doc.replace(y1, "http")
         res = tokeniser.tokenize(doc)
-        if "\u2013" in res:
-            print res
-        if "\\u2013" in res:
-            print res
-            print "h"
+
+        ## removed these two test conditions
+        # if "\u2013" in res:
+        #     print res
+        # if "\\u2013" in res:
+        #     print res
+        #     print "h"
+
+        ## faster append + faster string concatenation
         bires = []
-        for i in range(len(res)-1):
-            bires.append(res[i] + " " + res[i + 1])
+        append_bires = bires.append
+        for i in xrange(len(res)-1):
+            append_bires(  " ".join([ res[i], res[i + 1] ])  )
         return res + bires
 
     def predictzvalues(self, text, zdict_3, threshold=3):
         sumz = [0, 0, 0, 0]
-        text = self.splitfun4tweet(text)
+        text = self.splitfun4tweetGG(text)
         for token in text:
             if (len(token) > 1):
-                for i in range(len(zdict_3)):
+                for i in xrange(len(zdict_3)):
                     if ((token in zdict_3[0]) and zdict_3[i][token]>=threshold):
                         sumz[i] += 1
         return sumz
@@ -172,7 +201,7 @@ class Echo():
             dicht = loadDic(path, corpus)
         vocid = i
 
-        for i in range(len(data)):
+        for i in xrange(len(data)):
             text = data[i]
             polarity = labels[i]
             if POS:
@@ -191,7 +220,7 @@ class Echo():
                 for k, v in dicht.iteritems():
                     if text.find(k) != -1:
                         text += " " + v
-            newtxt = splitfun4tweet(text)
+            newtxt = self.splitfun4tweetGG(text)
             instance = ""
             sentencedict = dict()
             priorpol = [0, 0, 0, 0]
@@ -236,169 +265,121 @@ class Echo():
         vocf.close()
         f.close()
 
+    # duplicate for monitoring and speed purpose by GG
     def getTestFile(self, path, inputfile, outputsvmfile, inputvocab, classifier, prepolarity, Z_score, POS, TwitterDict, corpus, zthreshold=3, tokenlngth=1):
         '''This function generates the test file, it takes the test file path and the vocabulary file (inputvocab), the classifier (classifier) and the options
         in order to predict the polarity of each tweet in the test file'''
 
-        if prepolarity:
-            lexdic = sentii.loadLexicon()
-            ludic = sentii.loadLU()
-            lexswn, lexposswn = sentii.loadswn()
-        if Z_score:
-            z_dict = zscore.loadzscore(corpus, path)
-        resfile = open(outputsvmfile, "w")
-        if TwitterDict:
-            dicht = loadDic(path, corpus)
-        index = 0
-        lines = open(inputfile, "r")
-        all_txt = ""
-        for row1 in lines:
-            row1 = row1.replace("\n", "").split("\t")
-            id1 = row1[0]
-            id2 = row1[1]
-            print "row1 = ", row1
-            if len(row1) < 1 :
-                print row1
-                exit(0)
-            sentence = row1[3].lower()
-            zsum = [0, 0, 0, 0]
-            if Z_score:
-                zsum = self.predictzvalues(sentence, z_dict, zthreshold)
-            rowhash = {}
-            count = 0
-            if TwitterDict:
-                for k, v in dicht.iteritems():
-                    if sentence.find(k) != -1:
-                        sentence += " " + v
-            newt = self.splitfun4tweet(sentence)
-            priorpol = [0, 0, 0, 0]
-            postags = [0, 0, 0, 0, 0]
-            if POS:
-                aspect = ut.getPosTags(sentence)
-                paspect = str(aspect)
-                postags[0] = len(paspect.split("'NN")) - 1
-                postags[1] = len(paspect.split("'JJ")) - 1
-                postags[2] = len(paspect.split("'RB'")) - 1
-                postags[3] = len(paspect.split("'VB")) - 1
-                postags[4] = len(paspect.split("'CC'")) - 1
-            for token in newt:
-                if (len(token) > tokenlngth):
-                    if prepolarity:
-                        pol1 = sentii.getWordsenti(token, ludic)
-                        pol2 = sentii.getWordsenti(token, lexdic)
-                        priorpol[pol2 + 1] += 1  # 61 +1 alone
-                        priorpol[pol1 + 1] += 1  # alone 61 +1
-                    count += 1
-                    if inputvocab.has_key(token):
-                        index = inputvocab[token]
-                    # filling the hashtable for each file index:number of occurence
-                        if rowhash.has_key(index):
-                            rowhash[index] += 1
-                        else:
-                            rowhash[index] = 1
-            x_test = [0 for i in range(len(inputvocab))]
-            d_sorted_by_value = OrderedDict(sorted(rowhash.items(), key=lambda x: x[0]))
-            for k, v in d_sorted_by_value.iteritems():
-                x_test[k] = v
-            i = 0
-            if prepolarity:
-                x_test[i], x_test[i+1], x_test[i+2] = (priorpol[0], priorpol[1], priorpol[2])
-                i = i + 3
-            if Z_score:
-                x_test[i], x_test[i+1], x_test[i+2], x_test[i+3] = zsum[0], zsum[1], zsum[2], zsum.index(max(zsum))
-                i = i + 4
-            if POS:
-                x_test[i], x_test[i+1], x_test[i+2], x_test[i+3], x_test[i+4] = postags[0], postags[1], postags[2], postags[3], postags[4]
-                i = i + 5
-            y_pred = classifier.predict(x_test)
-            all_txt += "%s\t%s\t%s\t%s\n" % (id1, id2, self.getPolaritynam(y_pred[0]), row1[3])
-        resfile.write(all_txt)
-        resfile.close()
+        ## pol is always false in getresult() --> removed
+        # if prepolarity:
+        #     lexdic = sentii.loadLexicon()
+        #     ludic = sentii.loadLU()
+        #     lexswn, lexposswn = sentii.loadswn()
 
-    # duplicate for monitoring and speed purpose by GG
-    def getTestFileGG(self, path, inputfile, outputsvmfile, inputvocab, classifier, prepolarity, Z_score, POS, TwitterDict, corpus, zthreshold=3, tokenlngth=1):
-        '''This function generates the test file, it takes the test file path and the vocabulary file (inputvocab), the classifier (classifier) and the options
-        in order to predict the polarity of each tweet in the test file'''
+        ## zs is always True in getresult() --> condition removed
+        # if Z_score:
+        #     z_dict = zscore.loadzscore(corpus, path)
+        z_dict = zscore.loadzscore(corpus, path)
 
-        if prepolarity:
-            lexdic = sentii.loadLexicon()
-            ludic = sentii.loadLU()
-            lexswn, lexposswn = sentii.loadswn()
-        if Z_score:
-            z_dict = zscore.loadzscore(corpus, path)
-        resfile = open(outputsvmfile, "w")
-        if TwitterDict:
-            dicht = loadDic(path, corpus)
+        
+        ## removed because never used
+        # if TwitterDict:
+        #     dicht = loadDic(path, corpus)
         index = 0
         f = open(inputfile, "r")
         lines = f.readlines()
         all_txt = ""
-        indexLine = 0
-        total = len(lines)
-        for row1 in lines:
-            indexLine += 1
-            self.progressBar(indexLine, total)
-            row1 = row1.replace("\n", "").split("\t")
-            id1 = row1[0]
-            id2 = row1[1]
-            # print "row1 = ", row1
-            if len(row1) < 1 :
-                # print row1
-                exit(0)
-            sentence = row1[3].lower()
-            zsum = [0, 0, 0, 0]
-            if Z_score:
+
+        ## added in order to fasten the concatenation by using cpython
+        all_txt_list = list()
+        append = all_txt_list.append
+        lower = str.lower
+
+        with open(outputsvmfile, "a") as resfile:
+
+            total = len(lines)
+            for indexLine, row1 in enumerate(lines):
+                self.progressBar(indexLine, total)
+                row1 = row1.replace("\n", "").split("\t")
+                if len(row1) < 1 :  exit(0)
+                id1 = row1[0]
+                id2 = row1[1]
+
+                sentence = lower(row1[3])
+
+                zsum = [0, 0, 0, 0]
+                
+                ## zs if always true in getresult --> removed the condition
+                # if Z_score:
+                #     zsum = self.predictzvalues(sentence, z_dict, zthreshold)
                 zsum = self.predictzvalues(sentence, z_dict, zthreshold)
-            rowhash = {}
-            count = 0
-            if TwitterDict:
-                for k, v in dicht.iteritems():
-                    if sentence.find(k) != -1:
-                        sentence += " " + v
-            newt = self.splitfun4tweet(sentence)
-            priorpol = [0, 0, 0, 0]
-            postags = [0, 0, 0, 0, 0]
-            if POS:
-                aspect = ut.getPosTags(sentence)
-                paspect = str(aspect)
-                postags[0] = len(paspect.split("'NN")) - 1
-                postags[1] = len(paspect.split("'JJ")) - 1
-                postags[2] = len(paspect.split("'RB'")) - 1
-                postags[3] = len(paspect.split("'VB")) - 1
-                postags[4] = len(paspect.split("'CC'")) - 1
-            for token in newt:
-                if (len(token) > tokenlngth):
-                    if prepolarity:
-                        pol1 = sentii.getWordsenti(token, ludic)
-                        pol2 = sentii.getWordsenti(token, lexdic)
-                        priorpol[pol2 + 1] += 1  # 61 +1 alone
-                        priorpol[pol1 + 1] += 1  # alone 61 +1
-                    count += 1
-                    if inputvocab.has_key(token):
-                        index = inputvocab[token]
-                    # filling the hashtable for each file index:number of occurence
-                        if rowhash.has_key(index):
-                            rowhash[index] += 1
-                        else:
-                            rowhash[index] = 1
-            x_test = [0 for i in range(len(inputvocab))]
-            d_sorted_by_value = OrderedDict(sorted(rowhash.items(), key=lambda x: x[0]))
-            for k, v in d_sorted_by_value.iteritems():
-                x_test[k] = v
-            i = 0
-            if prepolarity:
-                x_test[i], x_test[i+1], x_test[i+2] = (priorpol[0], priorpol[1], priorpol[2])
-                i = i + 3
-            if Z_score:
+
+                rowhash = {}
+                count = 0
+
+                ## dic is always false in getresult --> condition never used --> removed
+                # if TwitterDict:
+                #     for k, v in dicht.iteritems():
+                #         if sentence.find(k) != -1:
+                #             sentence += " " + v
+
+                newt = self.splitfun4tweetGG(sentence)
+                priorpol = [0, 0, 0, 0]
+                postags = [0, 0, 0, 0, 0]
+
+                ## pos is always false in getresult --> condition never used --> removed
+                # if POS:
+                #     aspect = ut.getPosTags(sentence)
+                #     paspect = str(aspect)
+                #     postags[0] = len(paspect.split("'NN")) - 1
+                #     postags[1] = len(paspect.split("'JJ")) - 1
+                #     postags[2] = len(paspect.split("'RB'")) - 1
+                #     postags[3] = len(paspect.split("'VB")) - 1
+                #     postags[4] = len(paspect.split("'CC'")) - 1
+
+                for token in newt:
+                    if (len(token) > tokenlngth):
+                        ## pol is always false in getresult --> condition never used --> removed
+                        # if prepolarity:
+                        #     pol1 = sentii.getWordsenti(token, ludic)
+                        #     pol2 = sentii.getWordsenti(token, lexdic)
+                        #     priorpol[pol2 + 1] += 1  # 61 +1 alone
+                        #     priorpol[pol1 + 1] += 1  # alone 61 +1
+                        count += 1
+                        if inputvocab.has_key(token):
+                            index = inputvocab[token]
+                        # filling the hashtable for each file index:number of occurence
+                            if rowhash.has_key(index):
+                                rowhash[index] += 1
+                            else:
+                                rowhash[index] = 1
+                x_test = [0 for i in xrange(len(inputvocab))]
+                d_sorted_by_value = OrderedDict(sorted(rowhash.items(), key=lambda x: x[0]))
+                for k, v in d_sorted_by_value.iteritems():
+                    x_test[k] = v
+
+                i = 0
+
+                ## pol is always false in getresult() --> removed because never used
+                # if prepolarity:
+                #     x_test[i], x_test[i+1], x_test[i+2] = (priorpol[0], priorpol[1], priorpol[2])
+                #     i = i + 3
+
+                ## zs is always true in getresult() --> condition removed
+                # if Z_score:
+                #     x_test[i], x_test[i+1], x_test[i+2], x_test[i+3] = zsum[0], zsum[1], zsum[2], zsum.index(max(zsum))
+                #     i = i + 4
                 x_test[i], x_test[i+1], x_test[i+2], x_test[i+3] = zsum[0], zsum[1], zsum[2], zsum.index(max(zsum))
                 i = i + 4
-            if POS:
-                x_test[i], x_test[i+1], x_test[i+2], x_test[i+3], x_test[i+4] = postags[0], postags[1], postags[2], postags[3], postags[4]
-                i = i + 5
-            y_pred = classifier.predict(x_test)
-            all_txt += "%s\t%s\t%s\t%s\n" % (id1, id2, self.getPolaritynam(y_pred[0]), row1[3])
-        resfile.write(all_txt)
-        resfile.close()
+
+                ## pos is always false in getresult() --> removed because never used
+                # if POS:
+                #     x_test[i], x_test[i+1], x_test[i+2], x_test[i+3], x_test[i+4] = postags[0], postags[1], postags[2], postags[3], postags[4]
+                #     i = i + 5
+
+                y_pred = classifier.predict(x_test)
+                append(   "\t".join([ id1, id2, self.getPolaritynam(y_pred[0]), row1[3] ]) + "\n" )
+                resfile.write( "\t".join([ id1, id2, self.getPolaritynam(y_pred[0]), row1[3] ]) + "\n" )
 
     def getFileName(self, prepolarity, z_score, POS, Twittdic):
         fn = "t"
@@ -418,69 +399,22 @@ class Echo():
         f = open(vocfile, "r")
         lines = f.readlines()
         i = 0
-        for line in lines:
+        for index, line in enumerate(lines):
             voc = line.split("\t")
-            hasht[voc[0]] = i
-            i += 1
+            hasht[voc[0]] = index
         f.close()
         return hasht
 
-    def writeInputFile(self, txt_lst, filename):
-        ftxt_lst = [''.join(('NA\t{}\tunknwn\t'.format(txt_lst.index(line)), line, '\n')) for line in txt_lst]
-        with open(filename, 'w') as f:
-            f.writelines(ftxt_lst)
-
     # duplicate version for speed and monitoring purpose by GG
-    def writeInputFileGG(self, txt_lst, filename):
-        # ftxt_lst = [''.join(('NA\t',str(txt_lst.index(line)),'\tunknwn\t', line, '\n')) for line in txt_lst]
-        
-        ftxt_lst = list()
-        i = 0
-        for line in txt_lst:
-            i += 1
-            self.progressBar(i, len(txt_lst))
-            fline = ''.join(('NA\t',str(txt_lst.index(line)),'\tunknwn\t', line, '\n'))
-            ftxt_lst.append(fline)
-        with open(filename, 'w') as f:
-            f.writelines(ftxt_lst)
+    def writeInputFile(self, txt_lst, filename):
 
-    def getResult(self, txt_lst, corpus='txt', option='zs', training='N'):
-        """Tagged a list of sentence in positive, negative or neutral opinion
-        @param : List[string] ; the text (list of sentence) that you want to tagged. Each value of the list is a sentence.
-        @return: List[(set)] ; which the set is (sentence, opinion)"""
-
-        inp_dir = tempfile.mkdtemp(prefix = 'data_sent_analysis')
-        out_dir = tempfile.mkdtemp(prefix='eval_sent_anlysis')
-        inputf = os.path.join(inp_dir, 'tmpdata.txt')
-        lst_tmp = [st.encode('utf-8') for st in txt_lst]
-        self.writeInputFile(lst_tmp, inputf)
-        outputf = os.path.join(out_dir, 'tmpeval.txt')
-        # print "Model Loading ..."
-        # vocabhash = loadVocbFile("./data/reviewvocab.txt")
-        # classifier1 = joblib.load("./review.pkl")
-        # print "Predicting ..."
-        pol = pos = dic = False
-        zs = True
-        self.getTestFile('./', inputf, outputf, self.vocabhash, self.classifier1, pol, zs, pos, dic, corpus)
-        with open(outputf) as f:
-            resultat = []
-            for line in f.readlines():
-                line_in_list = line.split("\t")
-                if (line_in_list[2] and line_in_list[3]) is not None:
-                    result_by_line = (line_in_list[2].decode('utf-8'), (line_in_list[3].replace('\n', '')).decode('utf-8'))
-                    print(type(result_by_line))
-                    resultat.append(result_by_line)
-                else:
-                    pass
-        #retour = json.dumps(resultat)
-        os.unlink(outputf)
-        os.unlink(inputf)
-        shutil.rmtree(inp_dir)
-        shutil.rmtree(out_dir)
-        return resultat
+        with open(filename, "a") as myfile:
+            for i, line in enumerate(txt_lst):
+                self.progressBar(i, len(txt_lst))
+                myfile.write( "NA\t%s\tunknwn\t%s\n" % (str(txt_lst.index(line)), line) )
 
     ## added a modified version by GG to try going faster and monitoring
-    def getResultGG(self, txt_lst, corpus='txt', option='zs', training='N'):
+    def getResult(self, txt_lst, corpus='txt', option='zs', training='N'):
         """Tagged a list of sentence in positive, negative or neutral opinion
         @param : List[string] ; the text (list of sentence) that you want to tagged. Each value of the list is a sentence.
         @return: List[(set)] ; which the set is (sentence, opinion)"""
@@ -491,108 +425,103 @@ class Echo():
         out_dir = tempfile.mkdtemp(prefix='eval_sent_anlysis')
         print 3
         inputf = os.path.join(inp_dir, 'tmpdata.txt')
-        print 4, "list st.encode"
+        print 4, "list st.encode\n"
         lst_tmp = [st.encode('utf-8') for st in txt_lst]
-        print 5, "writeInputFile"
-        self.writeInputFileGG(lst_tmp, inputf)
-        print 6, "outputf"
+        txt_lst = None # empty the list to save memory
+        print 5, "writeInputFile\n"
+        self.writeInputFile(lst_tmp, inputf)
+        lst_tmp = None # empty the list to save memory
+        print 6, "outputf\n"
         outputf = os.path.join(out_dir, 'tmpeval.txt')
-        # print "Model Loading ..."
-        # vocabhash = loadVocbFile("./data/reviewvocab.txt")
-        # classifier1 = joblib.load("./review.pkl")
-        print 7, "Predicting ..."
+        print 7, "Predicting ...\n"
         pol = pos = dic = False
         zs = True
-        print 8, "getTestFile"
-        self.getTestFileGG('./', inputf, outputf, self.vocabhash, self.classifier1, pol, zs, pos, dic, corpus)
-        print 9, "outputf"
+        print 8, "getTestFile\n"
+        self.getTestFile('./', inputf, outputf, self.vocabhash, self.classifier1, pol, zs, pos, dic, corpus)
+        print 9, "noutputf\n"
         with open(outputf) as f:
             resultat = []
+
+            append_resultat = resultat.append
             i = 0
             lines = f.readlines()
             total = len(lines)
+            
             for line in lines:
-                i += 1
-                self.progressBar(i, total )
                 line_in_list = line.split("\t")
                 if (line_in_list[2] and line_in_list[3]) is not None:
-                    result_by_line = (line_in_list[2].decode('utf-8'), (line_in_list[3].replace('\n', '')).decode('utf-8'))
-                    # print(type(result_by_line))
-                    resultat.append(result_by_line)
-                else:
-                    pass
-        #retour = json.dumps(resultat)
+                    append_resultat(  (line_in_list[2].decode('utf-8'), (line_in_list[3].replace('\n', '')).decode('utf-8'))  )
+
         os.unlink(outputf)
         os.unlink(inputf)
         shutil.rmtree(inp_dir)
         shutil.rmtree(out_dir)
         return resultat
 
-    
+
 
 # modified by Gael Guibon 
-# if __name__ == '__main__':
-#     zs = dic = pol = pos = False
+if __name__ == '__main__':
+    zs = dic = pol = pos = False
+    echo = Echo()
+    if args.corpus=='tw':
+        filename="./corpus/twitter-train-cleansed-B.txt"
+        svmfname = "data/tweet.txt"
+        data, labels = echo.readFile(args.train)    
+        x = args.feature
+        y = args.trainingFlag
+        if x == "zscore":
+            zs = True
+        elif x == "pol":
+            pol = True
+        elif x == "twitterDictionary":
+            dic = True
+        else: raise NameError('Invalid Feature Option')
 
-#     if args.corpus=='tw':
-#         filename="./corpus/twitter-train-cleansed-B.txt"
-#         svmfname = "data/tweet.txt"
-#         data, labels = readFile(args.train)    
-#         x = args.feature
-#         y = args.trainingFlag
-#         if x == "zscore":
-#             zs = True
-#         elif x == "pol":
-#             pol = True
-#         elif x == "twitterDictionary":
-#             dic = True
-#         else: raise NameError('Invalid Feature Option')
+        if y==False:
+            print "Model Loading  ..."
+            vocabhash = echo.loadVocbFile("data/tweetvocab"+echo.getFileName(pol,zs,pos,dic)+".txt")
+            outf = "eval/hx" + echo.getFileName(pol, zs, pos, dic) + ".txt"
+            classifier1 = joblib.load(echo.getFileName(pol, zs, pos, dic) + ".pkl")
+        elif y==True:
+            print "preprocessing ..."
+            echo.getTrainingFile(data, labels, "data/tweetvocab" + echo.getFileName(pol,zs,pos,dic) + ".txt", svmfname, pol, zs, pos, dic, args.corpus)
+            vocabhash = echo.loadVocbFile("data/tweetvocab" + echo.getFileName(pol,zs,pos,dic) + ".txt")
+            outf = "eval/hx" + echo.getFileName(pol, zs, pos, dic) + ".txt"
+            print "training"
+            x_train, y_train = load_svmlight_file(svmfname)
+            classifier1 = svm.LinearSVC()
+            classifier1.fit(x_train, y_train)
+            joblib.dump(classifier1, echo.getFileName(pol,zs,pos,dic) + ".pkl")
+        else: raise NameError('Invalid Option: training or not training?')
 
-#         if y==False:
-#             print "Model Loading  ..."
-#             vocabhash = loadVocbFile("data/tweetvocab"+getFileName(pol,zs,pos,dic)+".txt")
-#             outf = "eval/hx" + getFileName(pol, zs, pos, dic) + ".txt"
-#             classifier1 = joblib.load(getFileName(pol, zs, pos, dic) + ".pkl")
-#         elif y==True:
-#             print "preprocessing ..."
-#             getTrainingFile(data, labels, "data/tweetvocab" + getFileName(pol,zs,pos,dic) + ".txt", svmfname, pol, zs, pos, dic, args.corpus)
-#             vocabhash = loadVocbFile("data/tweetvocab" + getFileName(pol,zs,pos,dic) + ".txt")
-#             outf = "eval/hx" + getFileName(pol, zs, pos, dic) + ".txt"
-#             print "training"
-#             x_train, y_train = load_svmlight_file(svmfname)
-#             classifier1 = svm.LinearSVC()
-#             classifier1.fit(x_train, y_train)
-#             joblib.dump(classifier1, getFileName(pol,zs,pos,dic) + ".pkl")
-#         else: raise NameError('Invalid Option: training or not training?')
+        print "Predicting ..."
+        echo.getTestFile('./', "input/semeval-tweet-test-B-input.txt", outf, vocabhash, classifier1, pol, zs, pos, dic, args.corpus)
+        print "Evaluation ..."
+        prog = "perl eval/score-semeval2014-task9-subtaskB.pl " + outf
+        import subprocess
+        p = subprocess.Popen(prog, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE).communicate()[0]
+        print(p)
 
-#         print "Predicting ..."
-#         getTestFile('./', "input/semeval-tweet-test-B-input.txt", outf, vocabhash, classifier1, pol, zs, pos, dic, args.corpus)
-#         print "Evaluation ..."
-#         prog = "perl eval/score-semeval2014-task9-subtaskB.pl " + outf
-#         import subprocess
-#         p = subprocess.Popen(prog, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE).communicate()[0]
-#         print(p)
+    elif args.corpus=='txt':
+        filename = './corpus/review.txt'
+        data, labels = echo.readFile(args.train)
+        svmfname = "trainab"
+        zthreshold=-0.5
+        zs = True # For corpus text: only zscore is avalaible
+        print "preprocessing ..."
+        echo.getTrainingFile(data, labels, "data/reviewvocab.txt", svmfname, pol, zs, pos, dic, args.corpus, zthreshold)
+        vocabhash = echo.loadVocbFile("data/reviewvocab.txt")
+        outf = "eval/review-z.txt"
+        print "Training ..."
+        x_train, y_train = load_svmlight_file(svmfname)
+        classifier1 = svm.LinearSVC()
+        classifier1.fit(x_train, y_train)
+        joblib.dump(classifier1, "review.pkl")
+        print "predicting"
+        echo.getTestFile('./', "input/review-input.txt", outf, vocabhash, classifier1, pol, zs, pos, dic, args.corpus)
+        print "Evaluation ..."
+        scores = cross_validation.cross_val_score(classifier1, x_train, y_train, cv=5)
+        print scores
 
-#     elif args.corpus=='txt':
-#         filename = './corpus/review.txt'
-#         data, labels = readFile(args.train)
-#         svmfname = "trainab"
-#         zthreshold=-0.5
-#         zs = True # For corpus text: only zscore is avalaible
-#         print "preprocessing ..."
-#         getTrainingFile(data, labels, "data/reviewvocab.txt", svmfname, pol, zs, pos, dic, args.corpus, zthreshold)
-#         vocabhash = loadVocbFile("data/reviewvocab.txt")
-#         outf = "eval/review-z.txt"
-#         print "Training ..."
-#         x_train, y_train = load_svmlight_file(svmfname)
-#         classifier1 = svm.LinearSVC()
-#         classifier1.fit(x_train, y_train)
-#         joblib.dump(classifier1, "review.pkl")
-#         print "predicting"
-#         getTestFile('./', "input/review-input.txt", outf, vocabhash, classifier1, pol, zs, pos, dic, args.corpus)
-#         print "Evaluation ..."
-#         scores = cross_validation.cross_val_score(classifier1, x_train, y_train, cv=5)
-#         print scores
-
-#     else: raise NameError('Invalid Option : Please use "python sent_analysis.py -h" to see all available options')
-
+    else: raise NameError('Invalid Option : Please use "python sent_analysis.py -h" to see all available options')
