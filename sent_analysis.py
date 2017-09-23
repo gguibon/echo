@@ -4,7 +4,7 @@ Created on Thu Apr 24 13:33:02 2014
 
 @author: Hussam Hamdan
 
-Modified version by Gaël Guibon (command line interface added)
+Modified version by Gaël Guibon (command line interface added + speed optimization (~15% for tweets, ~40% for reviews))
 """
 #ignore scikit warnings
 def warn(*args, **kwargs):
@@ -22,33 +22,22 @@ from sklearn.externals import joblib
 from sklearn import svm, cross_validation
 from sklearn.datasets import load_svmlight_file
 tokeniser = htok.Tokenizer(preserve_case=False)
-import shutil
-import tempfile
-import os
-import json
-import argparse
-import sys
+import shutil, tempfile, os, json, argparse, sys, time
 
 # argparse added by Gael Guibon
-parser = argparse.ArgumentParser(description='echo by Hussam Hamdam. Forked by Gaël Guibon in order to add a CLI \n Sentiment analysis classifier by polarity.')
+parser = argparse.ArgumentParser(description='echo by Hussam Hamdam. Forked by Gaël Guibon in order to add a CLI and speed optimization\n Sentiment analysis classifier by polarity.')
 parser.add_argument('-train','--train', metavar='TRAIN', type=str, help='train file path')
 parser.add_argument('-c','--corpus', metavar='MODES', type=str, help='modes; "txt" for text or "tw" for tweets)')
 parser.add_argument('-test','--test', metavar='TEST', type=str, help='test file path')
 parser.add_argument('-f','--feature', metavar='FEATS', type=str, help='type of features : "zs" for z-score, "pol" for polarity or "dic" for twitterDictionary')
 parser.add_argument('-t', '--trainingFlag', action='store_true', help='use this flag to enable training')
+parser.add_argument('-v', '--verbose', action='store_true', help='use this flag to enable progressionBar (will slightly slow computation)')
 parser.add_argument('-o','--output', metavar='OUTPUT', type=str, help='output file path')
 
 args = parser.parse_args()
 
-class Echo():
 
-    # def __init__(self):
-    #     print "Model Loading ..."
-    #     self.vocabhash = self.loadVocbFile("./data/reviewvocab.txt")
-    #     self.classifier1 = joblib.load("./review.pkl")
-    #     self.rep = {"\t": " ", "\r": "", "\n": "", "\\u002c": ",", "\\u2019": "'", "\\u2013": "-" ,  "\\u2013": "-"}
-    #     self.rep = dict((re.escape(k), v) for k, v in self.rep.iteritems())
-    #     self.pattern = re.compile("|".join(self.rep.keys()))
+class Echo():
 
     def __init__(self, training=False, vocab_path='./data/reviewvocab.txt', model_path='./model/review.pkl'):
         if training:
@@ -61,6 +50,19 @@ class Echo():
             self.rep = dict((re.escape(k), v) for k, v in self.rep.iteritems())
             self.pattern = re.compile("|".join(self.rep.keys()))
 
+    # ## added by GG to monitor speed
+    def stopWatch(self, value):
+        '''From seconds to Days;Hours:Minutes;Seconds'''
+        valueD = (((value/365)/24)/60)
+        Days = int (valueD)
+        valueH = (valueD-Days)*365
+        Hours = int(valueH)
+        valueM = (valueH - Hours)*24
+        Minutes = int(valueM)
+        valueS = (valueM - Minutes)*60
+        Seconds = int(valueS)
+        print Days,"days ;",Hours,"hours :",Minutes,"minutes ;",Seconds, "seconds"
+
     # added by GG to show the progress
     def progressBar( self, value, endvalue, bar_length=100):
         '''print the progress bar given the values.
@@ -68,7 +70,6 @@ class Echo():
         percent = float(value) / endvalue
         arrow = '-' * int(round(percent * bar_length)-1) + '>'
         spaces = ' ' * (bar_length - len(arrow))
-
         sys.stdout.write("\rPercent: [{0}] {1}%".format(arrow + spaces, int(round(percent * 100))))
         sys.stdout.flush()
 
@@ -105,34 +106,16 @@ class Echo():
     def getpolarityid(self, polarity):
         map_polarities = {"0":"negative", "1":"neutral", "2":"positive"}
         return map_polarities[str(int(polarity))]
-        # if polarity == "negative":
-        #     return 0
-        # elif polarity == "neutral":
-        #     return 1
-        # elif polarity == "positive":
-        #     return 2
 
     def getPolaritynam(self, polarity):
         map_polarities = {"0":"negative", "1":"neutral", "2":"positive"}
         return map_polarities[str(int(polarity))]
-        # if polarity == 1:
-        #     return "neutral"
-        # elif polarity == 0:
-        #     return "negative"
-        # elif polarity == 2:
-        #     return "positive"
 
     def splitfun4tweetGG(self, doc):
         doc = doc.decode('utf8', errors='ignore').encode('ascii', errors='ignore')
 
-        # rep = {"\t": " ", "\r": "", "\n": "", "\\u002c": ",", "\\u2019": "'", "\\u2013": "-" ,  "\\u2013": "-"}
-        # rep = dict((re.escape(k), v) for k, v in rep.iteritems())
-        # pattern = re.compile("|".join(rep.keys()))
         doc = self.pattern.sub(lambda m: self.rep[re.escape(m.group(0))], doc.lower())
 
-        # doc = doc.replace("\t", " ").replace("\r", "").replace("\n", "").lower()
-        # doc = doc.replace("\\u002c", ",").replace("\\u2019", "'")
-        # doc = doc.replace("\\u2013", "-").replace("\\u2013", "-")
         y = re.findall(r'@[a-z0-9]+', doc)
         for y1 in y:
             doc = doc.replace(y1, "uuser")
@@ -142,11 +125,11 @@ class Echo():
         res = tokeniser.tokenize(doc)
 
         ## removed these two test conditions
-        # if "\u2013" in res:
-        #     print res
-        # if "\\u2013" in res:
-        #     print res
-        #     print "h"
+        if "\u2013" in res:
+            print res
+        if "\\u2013" in res:
+            print res
+            print "h"
 
         ## faster append + faster string concatenation
         bires = []
@@ -198,7 +181,7 @@ class Echo():
 
         # tweet dictionary loading (expression,emotion icons)
         if TwitterDict:
-            dicht = loadDic(path, corpus)
+            dicht = self.loadDic(path, corpus)
         vocid = i
 
         for i in xrange(len(data)):
@@ -214,7 +197,7 @@ class Echo():
                 postags[3] = len(paspect.split("'VB")) - 1
                 postags[4] = len(paspect.split("'CC'")) - 1
             if Z_score:
-                zsum = predictzvalues(text, z_dict, zthreshold)
+                zsum = self.predictzvalues(text, z_dict, zthreshold)
             # add the emotions
             if TwitterDict:
                 for k, v in dicht.iteritems():
@@ -270,21 +253,19 @@ class Echo():
         '''This function generates the test file, it takes the test file path and the vocabulary file (inputvocab), the classifier (classifier) and the options
         in order to predict the polarity of each tweet in the test file'''
 
-        ## pol is always false in getresult() --> removed
-        # if prepolarity:
-        #     lexdic = sentii.loadLexicon()
-        #     ludic = sentii.loadLU()
-        #     lexswn, lexposswn = sentii.loadswn()
+        # pol is always false in getresult() --> removed
+        if prepolarity:
+            lexdic = sentii.loadLexicon()
+            ludic = sentii.loadLU()
+            lexswn, lexposswn = sentii.loadswn()
 
-        ## zs is always True in getresult() --> condition removed
-        # if Z_score:
-        #     z_dict = zscore.loadzscore(corpus, path)
-        z_dict = zscore.loadzscore(corpus, path)
-
+        # zs is always True in getresult() --> condition removed
+        if Z_score:
+            z_dict = zscore.loadzscore(corpus, path)
         
-        ## removed because never used
-        # if TwitterDict:
-        #     dicht = loadDic(path, corpus)
+        # removed because never used
+        if TwitterDict:
+            dicht = self.loadDic(path, corpus)
         index = 0
         f = open(inputfile, "r")
         lines = f.readlines()
@@ -295,11 +276,13 @@ class Echo():
         append = all_txt_list.append
         lower = str.lower
 
+        resfile = open(outputsvmfile, "w")
+        resfile.close()
         with open(outputsvmfile, "a") as resfile:
 
             total = len(lines)
             for indexLine, row1 in enumerate(lines):
-                self.progressBar(indexLine, total)
+                # self.progressBar(indexLine, total)
                 row1 = row1.replace("\n", "").split("\t")
                 if len(row1) < 1 :  exit(0)
                 id1 = row1[0]
@@ -310,41 +293,41 @@ class Echo():
                 zsum = [0, 0, 0, 0]
                 
                 ## zs if always true in getresult --> removed the condition
-                # if Z_score:
-                #     zsum = self.predictzvalues(sentence, z_dict, zthreshold)
-                zsum = self.predictzvalues(sentence, z_dict, zthreshold)
+                if Z_score:
+                    zsum = self.predictzvalues(sentence, z_dict, zthreshold)
+                # zsum = self.predictzvalues(sentence, z_dict, zthreshold)
 
                 rowhash = {}
                 count = 0
 
                 ## dic is always false in getresult --> condition never used --> removed
-                # if TwitterDict:
-                #     for k, v in dicht.iteritems():
-                #         if sentence.find(k) != -1:
-                #             sentence += " " + v
+                if TwitterDict:
+                    for k, v in dicht.iteritems():
+                        if sentence.find(k) != -1:
+                            sentence += " " + v
 
                 newt = self.splitfun4tweetGG(sentence)
                 priorpol = [0, 0, 0, 0]
                 postags = [0, 0, 0, 0, 0]
 
                 ## pos is always false in getresult --> condition never used --> removed
-                # if POS:
-                #     aspect = ut.getPosTags(sentence)
-                #     paspect = str(aspect)
-                #     postags[0] = len(paspect.split("'NN")) - 1
-                #     postags[1] = len(paspect.split("'JJ")) - 1
-                #     postags[2] = len(paspect.split("'RB'")) - 1
-                #     postags[3] = len(paspect.split("'VB")) - 1
-                #     postags[4] = len(paspect.split("'CC'")) - 1
+                if POS:
+                    aspect = ut.getPosTags(sentence)
+                    paspect = str(aspect)
+                    postags[0] = len(paspect.split("'NN")) - 1
+                    postags[1] = len(paspect.split("'JJ")) - 1
+                    postags[2] = len(paspect.split("'RB'")) - 1
+                    postags[3] = len(paspect.split("'VB")) - 1
+                    postags[4] = len(paspect.split("'CC'")) - 1
 
                 for token in newt:
                     if (len(token) > tokenlngth):
                         ## pol is always false in getresult --> condition never used --> removed
-                        # if prepolarity:
-                        #     pol1 = sentii.getWordsenti(token, ludic)
-                        #     pol2 = sentii.getWordsenti(token, lexdic)
-                        #     priorpol[pol2 + 1] += 1  # 61 +1 alone
-                        #     priorpol[pol1 + 1] += 1  # alone 61 +1
+                        if prepolarity:
+                            pol1 = sentii.getWordsenti(token, ludic)
+                            pol2 = sentii.getWordsenti(token, lexdic)
+                            priorpol[pol2 + 1] += 1  # 61 +1 alone
+                            priorpol[pol1 + 1] += 1  # alone 61 +1
                         count += 1
                         if inputvocab.has_key(token):
                             index = inputvocab[token]
@@ -361,21 +344,19 @@ class Echo():
                 i = 0
 
                 ## pol is always false in getresult() --> removed because never used
-                # if prepolarity:
-                #     x_test[i], x_test[i+1], x_test[i+2] = (priorpol[0], priorpol[1], priorpol[2])
-                #     i = i + 3
+                if prepolarity:
+                    x_test[i], x_test[i+1], x_test[i+2] = (priorpol[0], priorpol[1], priorpol[2])
+                    i = i + 3
 
                 ## zs is always true in getresult() --> condition removed
-                # if Z_score:
-                #     x_test[i], x_test[i+1], x_test[i+2], x_test[i+3] = zsum[0], zsum[1], zsum[2], zsum.index(max(zsum))
-                #     i = i + 4
-                x_test[i], x_test[i+1], x_test[i+2], x_test[i+3] = zsum[0], zsum[1], zsum[2], zsum.index(max(zsum))
-                i = i + 4
+                if Z_score:
+                    x_test[i], x_test[i+1], x_test[i+2], x_test[i+3] = zsum[0], zsum[1], zsum[2], zsum.index(max(zsum))
+                    i = i + 4
 
                 ## pos is always false in getresult() --> removed because never used
-                # if POS:
-                #     x_test[i], x_test[i+1], x_test[i+2], x_test[i+3], x_test[i+4] = postags[0], postags[1], postags[2], postags[3], postags[4]
-                #     i = i + 5
+                if POS:
+                    x_test[i], x_test[i+1], x_test[i+2], x_test[i+3], x_test[i+4] = postags[0], postags[1], postags[2], postags[3], postags[4]
+                    i = i + 5
 
                 y_pred = classifier.predict(x_test)
                 append(   "\t".join([ id1, id2, self.getPolaritynam(y_pred[0]), row1[3] ]) + "\n" )
@@ -410,7 +391,7 @@ class Echo():
 
         with open(filename, "a") as myfile:
             for i, line in enumerate(txt_lst):
-                self.progressBar(i, len(txt_lst))
+                # self.progressBar(i, len(txt_lst))
                 myfile.write( "NA\t%s\tunknwn\t%s\n" % (str(txt_lst.index(line)), line) )
 
     ## added a modified version by GG to try going faster and monitoring
@@ -462,6 +443,10 @@ class Echo():
 
 # modified by Gael Guibon 
 if __name__ == '__main__':
+    
+    # time starting point
+    startTime = time.time()
+
     zs = dic = pol = pos = False
     echo = Echo()
     if args.corpus=='tw':
@@ -470,11 +455,11 @@ if __name__ == '__main__':
         data, labels = echo.readFile(args.train)    
         x = args.feature
         y = args.trainingFlag
-        if x == "zscore":
+        if x == "zs":
             zs = True
         elif x == "pol":
             pol = True
-        elif x == "twitterDictionary":
+        elif x == "dic":
             dic = True
         else: raise NameError('Invalid Feature Option')
 
@@ -487,7 +472,11 @@ if __name__ == '__main__':
             print "preprocessing ..."
             echo.getTrainingFile(data, labels, "data/tweetvocab" + echo.getFileName(pol,zs,pos,dic) + ".txt", svmfname, pol, zs, pos, dic, args.corpus)
             vocabhash = echo.loadVocbFile("data/tweetvocab" + echo.getFileName(pol,zs,pos,dic) + ".txt")
-            outf = "eval/hx" + echo.getFileName(pol, zs, pos, dic) + ".txt"
+
+            if args.output: 
+                outf = os.path.abspath(args.output)
+            else:
+                outf = "eval/hx" + echo.getFileName(pol, zs, pos, dic) + ".txt"    
             print "training"
             x_train, y_train = load_svmlight_file(svmfname)
             classifier1 = svm.LinearSVC()
@@ -496,12 +485,13 @@ if __name__ == '__main__':
         else: raise NameError('Invalid Option: training or not training?')
 
         print "Predicting ..."
-        echo.getTestFile('./', "input/semeval-tweet-test-B-input.txt", outf, vocabhash, classifier1, pol, zs, pos, dic, args.corpus)
+        echo.getTestFile('./', args.test, outf, vocabhash, classifier1, pol, zs, pos, dic, args.corpus)
         print "Evaluation ..."
         prog = "perl eval/score-semeval2014-task9-subtaskB.pl " + outf
         import subprocess
         p = subprocess.Popen(prog, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE).communicate()[0]
         print(p)
+
 
     elif args.corpus=='txt':
         filename = './corpus/review.txt'
@@ -519,9 +509,12 @@ if __name__ == '__main__':
         classifier1.fit(x_train, y_train)
         joblib.dump(classifier1, "review.pkl")
         print "predicting"
-        echo.getTestFile('./', "input/review-input.txt", outf, vocabhash, classifier1, pol, zs, pos, dic, args.corpus)
+        echo.getTestFile('./', args.test, outf, vocabhash, classifier1, pol, zs, pos, dic, args.corpus)
         print "Evaluation ..."
         scores = cross_validation.cross_val_score(classifier1, x_train, y_train, cv=5)
         print scores
 
+
     else: raise NameError('Invalid Option : Please use "python sent_analysis.py -h" to see all available options')
+
+    echo.stopWatch(time.time() - startTime)
