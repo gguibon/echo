@@ -463,7 +463,8 @@ if __name__ == '__main__':
             pol = True
         if "dic" in x:
             dic = True
-        else: raise NameError('Invalid Feature Option')
+        if "dic" not in x and "pol" not in x and "zs" not in x: raise NameError('Invalid Feature Option')
+        # else: raise NameError('Invalid Feature Option')
 
         print zs, pol, dic
 
