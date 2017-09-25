@@ -29,7 +29,7 @@ parser = argparse.ArgumentParser(description='echo by Hussam Hamdam. Forked by G
 parser.add_argument('-train','--train', metavar='TRAIN', type=str, help='train file path')
 parser.add_argument('-c','--corpus', metavar='MODES', type=str, help='modes; "txt" for text or "tw" for tweets)')
 parser.add_argument('-test','--test', metavar='TEST', type=str, help='test file path')
-parser.add_argument('-f','--feature', metavar='FEATS', type=str, help='type of features : "zs" for z-score, "pol" for polarity or "dic" for twitterDictionary')
+parser.add_argument('-f','--feature', metavar='FEATS', type=str, help='type of features : "zs" for z-score, "pol" for polarity or "dic" for twitterDictionary or combine them "zs+pol+dic"')
 parser.add_argument('-t', '--trainingFlag', action='store_true', help='use this flag to enable training')
 parser.add_argument('-v', '--verbose', action='store_true', help='use this flag to enable progressionBar (will slightly slow computation)')
 parser.add_argument('-o','--output', metavar='OUTPUT', type=str, help='output file path')
@@ -454,14 +454,18 @@ if __name__ == '__main__':
         svmfname = "data/tweet.txt"
         data, labels = echo.readFile(args.train)    
         x = args.feature
+        x = x.split('+')
+        print x
         y = args.trainingFlag
-        if x == "zs":
+        if "zs" in x:
             zs = True
-        elif x == "pol":
+        if "pol" in x:
             pol = True
-        elif x == "dic":
+        if "dic" in x:
             dic = True
         else: raise NameError('Invalid Feature Option')
+
+        print zs, pol, dic
 
         if y==False:
             print "Model Loading  ..."
